@@ -27,11 +27,12 @@ function! go#def#Jump(mode)
     endif
     let command = printf("%s -f=%s -o=%s -t", bin_path, fname, go#util#OffsetCursor())
     let out = go#util#System(command)
+		" echo out
 
     " append the type information to the same line so our
     " jump_to_declaration() function can parse it. This makes it
     " compatible with guru definition as well too
-    let out = join(split(out, '\n'), ':')
+    " let out = join(split(out, '\n'), ':')
     if exists("l:tmpname")
       call delete(l:tmpname)
     endif
@@ -76,9 +77,38 @@ function! go#def#Jump(mode)
     return
   endif
 
-  call s:jump_to_declaration(out, a:mode)
+	if len(split(out, '\n')) == 2 
+    let out = join(split(out, '\n'), ':')
+    call s:jump_to_declaration(out, a:mode)
+	else
+	  call s:loclistSecond(out)
+	endif
   let $GOPATH = old_gopath
 endfunction
+
+" This uses Vim's errorformat to parse the output from Guru's 'plain output
+" and put it into location list. I believe using errorformat is much more
+" easier to use. If we need more power we can always switch back to parse it
+" via regex.
+func! s:loclistSecond(output)
+  " backup users errorformat, will be restored once we are finished
+  let old_errorformat = &errorformat
+
+  " match two possible styles of errorformats:
+  "
+  "   'file:line.col-line2.col2: message'
+  "   'file:line:col: message'
+  "
+  " We discard line2 and col2 for the first errorformat, because it's not
+  " useful and location only has the ability to show one line and column
+  " number
+  let errformat = "%f:%l:%c"
+	let l = split(a:output, "\n")[:-2]
+  call go#list#ParseFormat("locationlist", errformat, l)
+
+  let errors = go#list#Get("locationlist")
+  call go#list#Window("locationlist", len(errors))
+endfun
 
 function! s:jump_to_declaration(out, mode)
   " strip line ending
